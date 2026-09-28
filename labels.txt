@@ -1,0 +1,10 @@
+0 Bear
+1 Cat
+2 Dog
+3 Elephant
+4 Goat
+5 Horse
+6 Lion
+7 Tiger
+8 Wolf
+9 Other

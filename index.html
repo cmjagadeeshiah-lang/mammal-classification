@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mammal Classifier</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --glass: rgba(255, 255, 255, 0.14);
+    --glass-strong: rgba(255, 255, 255, 0.22);
+    --glass-border: rgba(255, 255, 255, 0.32);
+    --text: #f5f7fb;
+    --muted: rgba(245, 247, 251, 0.68);
+    --accent: #7ee0c9;
+    --accent-2: #b48cf2;
+    --live: #ff6b7d;
+    --error: #ff8f8f;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: "Manrope", sans-serif;
+    color: var(--text);
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 48px 18px;
+    position: relative;
+    overflow-x: hidden;
+    background: #191330;
+  }
+
+  /* Ambient aurora blobs the glass panels blur against */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: -10%;
+    z-index: -1;
+    background:
+      radial-gradient(38% 32% at 18% 22%, rgba(126, 224, 201, 0.55), transparent 60%),
+      radial-gradient(42% 38% at 82% 15%, rgba(180, 140, 242, 0.5), transparent 60%),
+      radial-gradient(46% 40% at 30% 88%, rgba(255, 138, 158, 0.4), transparent 60%),
+      radial-gradient(40% 36% at 88% 82%, rgba(94, 132, 246, 0.45), transparent 60%),
+      linear-gradient(160deg, #1d1533, #100c22 70%);
+    animation: drift 22s ease-in-out infinite alternate;
+    filter: blur(10px);
+  }
+
+  @keyframes drift {
+    from { transform: translate3d(0, 0, 0) scale(1); }
+    to   { transform: translate3d(2%, -3%, 0) scale(1.06); }
+  }
+
+  .app { width: 100%; max-width: 480px; }
+
+  .glass {
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: 22px;
+    backdrop-filter: blur(22px) saturate(150%);
+    -webkit-backdrop-filter: blur(22px) saturate(150%);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  }
+
+  header.glass {
+    padding: 26px 28px 22px;
+    margin-bottom: 16px;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0 0 6px;
+    letter-spacing: -0.01em;
+  }
+
+  .subtitle {
+    font-size: 0.9rem;
+    color: var(--muted);
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  /* Segmented mode switch */
+  .switch {
+    display: flex;
+    gap: 4px;
+    padding: 5px;
+    margin-bottom: 16px;
+  }
+
+  .switch button {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 0.86rem;
+    font-weight: 600;
+    padding: 10px 12px;
+    border-radius: 14px;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+
+  .switch button.active {
+    background: var(--glass-strong);
+    color: var(--text);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  }
+
+  .panel {
+    padding: 22px;
+    margin-bottom: 16px;
+  }
+
+  .panel[hidden] { display: none; }
+
+  /* Upload dropzone */
+  .dropzone {
+    border: 1.5px dashed var(--glass-border);
+    border-radius: 16px;
+    padding: 34px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+
+  .dropzone.dragover {
+    border-color: var(--accent);
+    background: rgba(126, 224, 201, 0.1);
+  }
+
+  .dropzone svg { width: 30px; height: 30px; color: var(--accent); margin-bottom: 10px; }
+  .dropzone p { margin: 0; font-size: 0.9rem; color: var(--muted); }
+  .dropzone strong { color: var(--text); font-weight: 600; }
+  #fileInput { display: none; }
+
+  /* Webcam */
+  .cam-frame {
+    position: relative;
+    border-radius: 16px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--glass-border);
+    aspect-ratio: 4 / 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #camVideo, #camCanvasView {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+  }
+
+  .cam-placeholder {
+    color: var(--muted);
+    font-size: 0.85rem;
+    text-align: center;
+    padding: 20px;
+  }
+
+  .live-dot {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px 5px 8px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.45);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .live-dot::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--live);
+    box-shadow: 0 0 0 0 rgba(255, 107, 125, 0.6);
+    animation: pulse-dot 1.4s ease-out infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%   { box-shadow: 0 0 0 0 rgba(255, 107, 125, 0.55); }
+    70%  { box-shadow: 0 0 0 8px rgba(255, 107, 125, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 107, 125, 0); }
+  }
+
+  .cam-controls {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+  }
+
+  .btn {
+    flex: 1;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 11px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--glass-border);
+    background: var(--glass-strong);
+    color: var(--text);
+    cursor: pointer;
+    transition: transform 0.12s ease, background 0.15s ease;
+  }
+
+  .btn:hover { background: rgba(255, 255, 255, 0.3); }
+  .btn:active { transform: scale(0.97); }
+
+  .btn.primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #121022;
+    border: none;
+  }
+
+  .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+  .live-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 14px;
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+
+  .switch-pill {
+    position: relative;
+    width: 42px;
+    height: 24px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.18);
+    border: 1px solid var(--glass-border);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .switch-pill::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: transform 0.2s ease, background 0.2s ease;
+  }
+
+  .switch-pill.on { background: rgba(126, 224, 201, 0.35); }
+  .switch-pill.on::after { transform: translateX(18px); background: var(--accent); }
+
+  /* Results */
+  #resultsPanel[hidden] { display: none; }
+
+  #statusLine {
+    font-size: 0.92rem;
+    color: var(--muted);
+    margin-bottom: 14px;
+    min-height: 20px;
+  }
+
+  #statusLine.error { color: var(--error); }
+
+  .pill-result {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 7px 14px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgba(126, 224, 201, 0.25), rgba(180, 140, 242, 0.25));
+    border: 1px solid var(--glass-border);
+  }
+
+  .pill-name { font-weight: 700; font-size: 1.05rem; }
+  .pill-conf { font-family: "IBM Plex Mono", monospace; font-size: 0.78rem; color: var(--muted); }
+
+  .measure-row {
+    display: grid;
+    grid-template-columns: 84px 1fr 46px;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 0;
+  }
+
+  .measure-label {
+    font-size: 0.8rem;
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .measure-row.top .measure-label { color: var(--text); font-weight: 600; }
+
+  .measure-track {
+    position: relative;
+    height: 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.15);
+    overflow: hidden;
+  }
+
+  .measure-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    background: var(--muted);
+    border-radius: 4px;
+    transition: width 0.4s ease;
+  }
+
+  .measure-row.top .measure-fill { background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+
+  .measure-pct {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-align: right;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="glass">
+    <h1>Mammal Classifier</h1>
+    <p class="subtitle">Upload a photo or use your webcam for live identification. Bear, cat, dog, elephant, goat, horse, lion, tiger, wolf &mdash; or Other.</p>
+  </header>
+
+  <div class="glass switch">
+    <button id="tabUpload" class="active">Upload photo</button>
+    <button id="tabWebcam">Use webcam</button>
+  </div>
+
+  <div class="glass panel" id="uploadPanel">
+    <div class="dropzone" id="dropzone">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
+      <p><strong>Choose a photo</strong> or drop it here</p>
+      <input type="file" id="fileInput" accept="image/*">
+    </div>
+  </div>
+
+  <div class="glass panel" id="webcamPanel" hidden>
+    <div class="cam-frame">
+      <div class="live-dot" id="liveDot">Live</div>
+      <video id="camVideo" autoplay playsinline muted></video>
+      <div class="cam-placeholder" id="camPlaceholder">Your camera preview will appear here.</div>
+    </div>
+    <div class="cam-controls">
+      <button class="btn" id="camToggleBtn">Start camera</button>
+      <button class="btn primary" id="camCaptureBtn" disabled>Capture &amp; identify</button>
+    </div>
+    <div class="live-toggle">
+      <span>Live identify (auto-classify continuously)</span>
+      <div class="switch-pill" id="liveToggle"></div>
+    </div>
+  </div>
+
+  <div class="glass panel" id="resultsPanel" hidden>
+    <div id="statusLine"></div>
+    <div id="measurements"></div>
+  </div>
+</div>
+
+<canvas id="captureCanvas" style="display:none;"></canvas>
+
+<script>
+(function () {
+  // ---------- Shared ----------
+  const resultsPanel = document.getElementById("resultsPanel");
+  const statusLine = document.getElementById("statusLine");
+  const measurementsEl = document.getElementById("measurements");
+  const captureCanvas = document.getElementById("captureCanvas");
+
+  function setStatus(html, isError) {
+    statusLine.innerHTML = html || "";
+    statusLine.classList.toggle("error", Boolean(isError));
+  }
+
+  function renderMeasurements(results) {
+    measurementsEl.innerHTML = "";
+    results.slice(0, 3).forEach(function (result, index) {
+      const pct = (result.probability * 100).toFixed(1);
+      const row = document.createElement("div");
+      row.className = "measure-row" + (index === 0 ? " top" : "");
+      row.innerHTML =
+        '<div class="measure-label" title="' + result.label + '">' + result.label + "</div>" +
+        '<div class="measure-track"><div class="measure-fill" style="width:' + pct + '%"></div></div>' +
+        '<div class="measure-pct">' + pct + "%</div>";
+      measurementsEl.appendChild(row);
+    });
+  }
+
+  let requestInFlight = false;
+
+  async function classifyBlob(blob, quiet) {
+    if (requestInFlight) return; // never overlap requests
+    requestInFlight = true;
+    resultsPanel.hidden = false;
+    if (!quiet) setStatus("Comparing against the catalogue&hellip;");
+
+    const formData = new FormData();
+    formData.append("image", blob, "capture.jpg");
+
+    try {
+      const response = await fetch("/predict", { method: "POST", body: formData });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Couldn't read this image.");
+
+      renderMeasurements(data.results);
+      setStatus(
+        'Identified as <span class="pill-result"><span class="pill-name">' + data.prediction +
+        '</span><span class="pill-conf">' + (data.confidence * 100).toFixed(1) + "% confidence</span></span>"
+      );
+    } catch (error) {
+      setStatus(error.message, true);
+    } finally {
+      requestInFlight = false;
+    }
+  }
+
+  // ---------- Tabs ----------
+  const tabUpload = document.getElementById("tabUpload");
+  const tabWebcam = document.getElementById("tabWebcam");
+  const uploadPanel = document.getElementById("uploadPanel");
+  const webcamPanel = document.getElementById("webcamPanel");
+
+  function showUpload() {
+    tabUpload.classList.add("active");
+    tabWebcam.classList.remove("active");
+    uploadPanel.hidden = false;
+    webcamPanel.hidden = true;
+    stopCamera();
+  }
+
+  function showWebcam() {
+    tabWebcam.classList.add("active");
+    tabUpload.classList.remove("active");
+    webcamPanel.hidden = false;
+    uploadPanel.hidden = true;
+  }
+
+  tabUpload.addEventListener("click", showUpload);
+  tabWebcam.addEventListener("click", showWebcam);
+
+  // ---------- Upload flow ----------
+  const dropzone = document.getElementById("dropzone");
+  const fileInput = document.getElementById("fileInput");
+
+  function handleFile(file) {
+    if (!file || !file.type.startsWith("image/")) {
+      resultsPanel.hidden = false;
+      setStatus("That's not a photo the identifier can read.", true);
+      return;
+    }
+    classifyBlob(file, false);
+  }
+
+  dropzone.addEventListener("click", function () { fileInput.click(); });
+  fileInput.addEventListener("change", function (e) {
+    if (e.target.files && e.target.files[0]) handleFile(e.target.files[0]);
+  });
+  ["dragenter", "dragover"].forEach(function (name) {
+    dropzone.addEventListener(name, function (e) {
+      e.preventDefault(); e.stopPropagation();
+      dropzone.classList.add("dragover");
+    });
+  });
+  ["dragleave", "drop"].forEach(function (name) {
+    dropzone.addEventListener(name, function (e) {
+      e.preventDefault(); e.stopPropagation();
+      dropzone.classList.remove("dragover");
+    });
+  });
+  dropzone.addEventListener("drop", function (e) {
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    handleFile(file);
+  });
+
+  // ---------- Webcam flow ----------
+  const camVideo = document.getElementById("camVideo");
+  const camPlaceholder = document.getElementById("camPlaceholder");
+  const camToggleBtn = document.getElementById("camToggleBtn");
+  const camCaptureBtn = document.getElementById("camCaptureBtn");
+  const liveDot = document.getElementById("liveDot");
+  const liveToggle = document.getElementById("liveToggle");
+
+  let mediaStream = null;
+  let liveMode = false;
+  let liveLoopTimer = null;
+  const LIVE_INTERVAL_MS = 1200;
+
+  async function startCamera() {
+    try {
+      mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    } catch (error) {
+      setStatus("Couldn't access the camera: " + error.message, true);
+      resultsPanel.hidden = false;
+      return;
+    }
+    camVideo.srcObject = mediaStream;
+    camVideo.style.display = "block";
+    camPlaceholder.style.display = "none";
+    camToggleBtn.textContent = "Stop camera";
+    camCaptureBtn.disabled = false;
+  }
+
+  function stopCamera() {
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(function (track) { track.stop(); });
+      mediaStream = null;
+    }
+    camVideo.srcObject = null;
+    camVideo.style.display = "none";
+    camPlaceholder.style.display = "block";
+    camToggleBtn.textContent = "Start camera";
+    camCaptureBtn.disabled = true;
+    stopLiveMode();
+  }
+
+  camToggleBtn.addEventListener("click", function () {
+    if (mediaStream) stopCamera(); else startCamera();
+  });
+
+  function grabFrameBlob() {
+    return new Promise(function (resolve) {
+      const width = camVideo.videoWidth || 320;
+      const height = camVideo.videoHeight || 240;
+      captureCanvas.width = width;
+      captureCanvas.height = height;
+      const ctx = captureCanvas.getContext("2d");
+      ctx.drawImage(camVideo, 0, 0, width, height);
+      captureCanvas.toBlob(function (blob) { resolve(blob); }, "image/jpeg", 0.9);
+    });
+  }
+
+  camCaptureBtn.addEventListener("click", async function () {
+    if (!mediaStream) return;
+    const blob = await grabFrameBlob();
+    if (blob) classifyBlob(blob, false);
+  });
+
+  function startLiveMode() {
+    liveMode = true;
+    liveDot.style.display = "flex";
+    liveToggle.classList.add("on");
+    liveLoop();
+  }
+
+  function stopLiveMode() {
+    liveMode = false;
+    liveDot.style.display = "none";
+    liveToggle.classList.remove("on");
+    if (liveLoopTimer) clearTimeout(liveLoopTimer);
+  }
+
+  async function liveLoop() {
+    if (!liveMode || !mediaStream) return;
+    const blob = await grabFrameBlob();
+    if (blob) await classifyBlob(blob, true);
+    if (liveMode) liveLoopTimer = setTimeout(liveLoop, LIVE_INTERVAL_MS);
+  }
+
+  liveToggle.addEventListener("click", function () {
+    if (!mediaStream) {
+      resultsPanel.hidden = false;
+      setStatus("Start the camera first to use live identify.", true);
+      return;
+    }
+    if (liveMode) stopLiveMode(); else startLiveMode();
+  });
+
+  window.addEventListener("beforeunload", stopCamera);
+})();
+</script>
+</body>
+</html>
